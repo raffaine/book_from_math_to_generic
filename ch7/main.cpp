@@ -50,6 +50,25 @@ concept NoncommutativeAdditiveSemigroup = std::regular<T> && Additive<T>;
 template <typename T>
 concept Integer = std::integral<T>;
 
+template <typename T>
+concept NoncommutativeAdditiveMonoid = NoncommutativeAdditiveSemigroup<T> && requires(T a) {
+    a + T(0) == a;
+    T(0) + a == a;
+};
+
+template <typename T>
+T reciprocal(T a) {
+    return -a;
+}
+
+template <typename T>
+concept NoncommutativeAdditiveGroup = NoncommutativeAdditiveMonoid<T> && requires(T a) {
+    a + reciprocal(a) == T(0);
+    reciprocal(a) + a == T(0);
+};
+
+
+// Operations
 
 template <Integer T>
 bool odd(T n) {
@@ -67,7 +86,9 @@ T half(T n) {
     although uses an approach that does O(log(n)) operations (instead of n)
 */
 template <NoncommutativeAdditiveSemigroup A, Integer N>
-A multiply_accumulate(A r, N  n, A a) {
+A multiply_accumulate_semigroup(A r, N  n, A a) {
+    // A precondition for correctness is that n >= 0
+    if (n == 0) return r;
     while(true) {
         if (odd(n)) {
             r = r + a;
@@ -76,6 +97,32 @@ A multiply_accumulate(A r, N  n, A a) {
         n = half(n);
         a = a + a;
     }
+}
+
+template <NoncommutativeAdditiveSemigroup A, Integer N>
+A multiply_semigroup(N n, A a) {
+    // A precondition is that n > 0
+    while (!odd(n)) {
+        a = a + a;
+        n = half(n);
+    }
+    if (n == 1) return a;
+    return multiply_accumulate_semigroup(a, half(n - 1), a + a);
+}
+
+template <NoncommutativeAdditiveMonoid A, Integer N>
+A multiply_monoid(N n, A a) {
+    if (n == 0) return A(0);
+    return multiply_semigroup(n, a);
+}
+
+template <NoncommutativeAdditiveGroup A, Integer N>
+A multiply_group(N n, A a) {
+    if (n < 0) {
+        n = -n;
+        a = -a;
+    }
+    return multiply_monoid(n, a);
 }
 
 template <typename T>
@@ -102,7 +149,7 @@ void run_operation(T min_bound, T max_bound) {
     // Time N multiplications using our custom approach
     Timer t;
     for (int i=0; i < N; i++) {
-        output2[i] = multiply_accumulate(T(0), input[i], input[N - i - 1]);
+        output2[i] = multiply_group(input[i], input[N - i - 1]);
     }
     auto custom_duration = t.clock();
     
@@ -134,13 +181,16 @@ void run_operation(T min_bound, T max_bound) {
 int main(int argc, char** argv) {
 
     std::cout << "Results for 64bit signed integer" << std::endl;
-    run_operation<int64_t>(1000000, 10000000);
+    run_operation<int64_t>(-5000000, 5000000);
+    
+    std::cout << "Results for 32bit signed integer" << std::endl;
+    run_operation<int32_t>(-5000, 5000);
     
     std::cout << "Results for 32bit unsigned integer" << std::endl;
     run_operation<uint32_t>(1000, 10000);
 
-    std::cout << "Results for 8bit signed integer" << std::endl;
-    run_operation<int8_t>(1, 20);
+    //std::cout << "Results for 8bit signed integer" << std::endl;
+    //run_operation<int8_t>(1, 20);
 
     return 0;
 }
