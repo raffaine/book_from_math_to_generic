@@ -7,7 +7,7 @@
 
 // Simple timer to clock the implementations
 
-#define PRINT_TIME_AS_MS 0 // In case measures are more familiar in milliseconds
+#define PRINT_TIME_AS_MS 1 // In case measures are more familiar in milliseconds
 
 using namespace std::chrono;
 
@@ -78,36 +78,31 @@ A multiply_accumulate(A r, N  n, A a) {
     }
 }
 
-
-
-
-
-
-int main(int argc, char** argv) {
+template <typename T>
+void run_operation(T min_bound, T max_bound) {
     // Number of inputs to be considered
     const int N = 1000000;
 
-    
     // Seed with a real random value, if available
     std::random_device r;
  
-    // Choose a random mean between 1000 and 10 000
+    // Choose a random mean between min_bound and max_bound
     std::default_random_engine e(r());
-    std::uniform_int_distribution<int> udist(1000, 10000);
+    std::uniform_int_distribution<T> udist(min_bound, max_bound);
 
     // Seed the input vector with a fresh set of random numbers
-    std::vector<int> input(N);
+    std::vector<T> input(N);
     for (int i=0; i < N; i++) {
         input[i] = udist(e);
     }
 
     // Create 2 output vectors, one for each approach
-    std::vector<int> output(N), output2(N);
+    std::vector<T> output(N), output2(N);
 
     // Time N multiplications using our custom approach
     Timer t;
     for (int i=0; i < N; i++) {
-        output2[i] = multiply_accumulate(0, input[i], input[N - i - 1]);
+        output2[i] = multiply_accumulate(T(0), input[i], input[N - i - 1]);
     }
     auto custom_duration = t.clock();
     
@@ -131,6 +126,21 @@ int main(int argc, char** argv) {
         std::cout << "Results don't match " << output[failed_ind] << " != " << output2[failed_ind] << std::endl;
         std::cout << "Values multiplied: " << input[failed_ind] << " x " << input[N - failed_ind - 1] << std::endl;
     }
+}
+
+
+
+
+int main(int argc, char** argv) {
+
+    std::cout << "Results for 64bit signed integer" << std::endl;
+    run_operation<int64_t>(1000000, 10000000);
+    
+    std::cout << "Results for 32bit unsigned integer" << std::endl;
+    run_operation<uint32_t>(1000, 10000);
+
+    std::cout << "Results for 8bit signed integer" << std::endl;
+    run_operation<int8_t>(1, 20);
 
     return 0;
 }
