@@ -2,6 +2,7 @@
 #include <chrono>
 #include <random>
 #include <functional>
+#include <concepts>
 #include <string>
 
 // Simple timer to clock the implementations
@@ -34,18 +35,40 @@ std::ostream& operator<<(std::ostream& os, microseconds t) {
 }
 
 
-// Math functions
+////// Math functions
 
-bool odd(int n) {
+// Concepts
+
+template <typename T>
+concept Additive = requires (T a, T b) {
+    a + b;
+};
+
+template <typename T>
+concept NoncommutativeAdditiveSemigroup = std::regular<T> && Additive<T>;
+
+template <typename T>
+concept Integer = std::integral<T>;
+
+
+template <Integer T>
+bool odd(T n) {
     return n & 1;
 }
 
-int half(int n) {
+template <Integer T>
+T half(T n) {
     return n >> 1;
 }
 
-int mult_acc4(int r, int n, int a) {
-    while (true) {
+/*
+    Given r == 0, calculates n * a through sequential accumulation
+    i.e. result == a + a + a ... (repeated n times)
+    although uses an approach that does O(log(n)) operations (instead of n)
+*/
+template <NoncommutativeAdditiveSemigroup A, Integer N>
+A multiply_accumulate(A r, N  n, A a) {
+    while(true) {
         if (odd(n)) {
             r = r + a;
             if (n == 1) return r;
@@ -54,6 +77,10 @@ int mult_acc4(int r, int n, int a) {
         a = a + a;
     }
 }
+
+
+
+
 
 
 int main(int argc, char** argv) {
@@ -80,7 +107,7 @@ int main(int argc, char** argv) {
     // Time N multiplications using our custom approach
     Timer t;
     for (int i=0; i < N; i++) {
-        output2[i] = mult_acc4(0, input[i], input[N - i - 1]);
+        output2[i] = multiply_accumulate(0, input[i], input[N - i - 1]);
     }
     auto custom_duration = t.clock();
     
