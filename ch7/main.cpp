@@ -2,6 +2,7 @@
 #include <chrono>
 #include <random>
 #include <functional>
+#include <limits>
 #include <concepts>
 #include <string>
 
@@ -31,6 +32,18 @@ std::ostream& operator<<(std::ostream& os, microseconds t) {
 #else
     os << t.count() << " microseconds";
 #endif
+    return os;
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, std::plus<T>) {
+    os << "x";
+    return os;
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, std::multiplies<T>) {
+    os << "^";
     return os;
 }
 
@@ -138,6 +151,20 @@ A power_group(A a, N n, Op op) {
     return power_monoid(a, n, op);
 }
 
+template <typename T>
+bool compare(const T& a, const T& b) {
+    return a == b;
+}
+
+template <>
+bool compare(const float& x, const float& y) {
+    const float eps = std::numeric_limits<float>::epsilon()*100;
+    if (y == 0.) return x == 0.;
+    auto diff = x / y;
+    diff = (diff < 1.) ? 1. - diff : diff - 1.;
+    return diff <= eps;
+}
+
 template <typename T, Integer N, typename Op, typename R = T>
 void run_operation(T min_bound, T max_bound, N min_bound2, N max_bound2, std::function<T(N,T)> base_op, const int NUM = 1000000) {
     // Seed with a real random value, if available
@@ -162,7 +189,7 @@ void run_operation(T min_bound, T max_bound, N min_bound2, N max_bound2, std::fu
     // Time N operations using our custom approach
     Timer t;
     for (int i=0; i < NUM; i++) {
-        output2[i] = power_group(input[i], input2[i], Op());
+        output2[i] = (input[i] == T(0))? T(0) : power_group(input[i], input2[i], Op());
     }
     auto custom_duration = t.clock();
     
@@ -175,31 +202,34 @@ void run_operation(T min_bound, T max_bound, N min_bound2, N max_bound2, std::fu
     std::cout << "Custom Operation took " << custom_duration << std::endl;    
     std::cout << "Base Operation took " << base_duration << std::endl;
     std::cout << "Custom runs " << ((double) base_duration.count()) / custom_duration.count() << " times faster." << std::endl;
-    if ( auto failed_ind = std::invoke([&] {
+    auto failed_ind = std::invoke([&] {
         for (int i=0; i < NUM; i++) {
-            if (output[i] != output2[i]) return i;
+            if (!compare(output[i], output2[i])) return i;
         }
         return -1;
-    }) < 0 ) {
+    });
+
+    if (failed_ind < 0 ) {
         std::cout << "Results match" << std::endl;
     } else {
-        std::cout << "Results don't match " << +output[failed_ind] << " != " << +output2[failed_ind] << std::endl;
-        std::cout << "Values multiplied: " << +input[failed_ind] << " x " << +input2[failed_ind] << std::endl;
+        std::cout << "Results don't match on i=" << failed_ind << ", " << +output[failed_ind] << " != " << +output2[failed_ind] << std::endl;
+        std::cout << "Values multiplied: " << +input[failed_ind] << Op() << +input2[failed_ind] << std::endl;
     }
 }
 
-int8_t my_multiply(int a, int8_t b) {
-    return static_cast<int8_t>(a) * b;
+int8_t my_multiply(int8_t a, int b) {
+    return static_cast<int8_t>(b) * a;
 }
 
 template <typename T, Integer N>
 T my_power(T a, N n) {
+    if (a == T(0)) return a;
     if (n < 0) {
         a = inverse(a, std::multiplies<T>());
         n = -n;
     }
-    T res = a;
-    while(--n > 0) {
+    T res = T(1);
+    while(n-- > 0) {
         res = std::multiplies<T>()(res, a);
     }
     return res;
