@@ -124,13 +124,11 @@ A power_monoid(A a, N n, Op op) {
 }
 
 template <typename T>
-requires MonoidOperation<typename std::plus<T>, T>
 T inverse(const T& a, std::plus<T>) {
     return -a;
 }
 
 template <typename T>
-requires MonoidOperation<typename std::multiplies<T>, T>
 T inverse(const T& x, std::multiplies<T>) {
     return T(1) / x;
 }
@@ -235,6 +233,170 @@ T my_power(T a, N n) {
     return res;
 }
 
+template <typename T, typename Op>
+void runFibs(T min_bound, T max_bound, Op base_op, Op custom_op, const int NUM=1000000) {
+    // Seed with a real random value, if available
+    std::random_device r;
+ 
+    // Choose a random mean between min_bound and max_bound
+    std::default_random_engine e(r());
+    std::uniform_int_distribution<T> udist(min_bound, max_bound);
+
+    // Seed the input vectors with a fresh set of random numbers
+    std::vector<T> input(NUM);
+    for (int i=0; i < NUM; i++) {
+        input[i] = udist(e);
+    }
+
+    // Create 2 output vectors, one for each approach
+    std::vector<T> output(NUM), output2(NUM);
+
+    // Time N multiplications using the hardware implementation
+    Timer t;
+    for (int i=0; i < NUM; i++) {
+        output[i] = base_op(input[i]);
+    }
+    auto base_duration = t.clock();
+    
+    // Time N operations using our custom approach
+    for (int i=0; i < NUM; i++) {
+        output2[i] = custom_op(input[i]);
+    }
+    auto custom_duration = t.clock();
+    
+    
+    std::cout << "Custom Operation took " << custom_duration << std::endl;    
+    std::cout << "Base Operation took " << base_duration << std::endl;
+    std::cout << "Custom runs " << ((double) base_duration.count()) / custom_duration.count() << " times faster." << std::endl;
+    auto failed_ind = std::invoke([&] {
+        for (int i=0; i < NUM; i++) {
+            if (!compare(output[i], output2[i])) return i;
+        }
+        return -1;
+    });
+
+    if (failed_ind < 0 ) {
+        std::cout << "Results match" << std::endl;
+    } else {
+        std::cout << "Results don't match on i=" << failed_ind << ", " << +output[failed_ind] << " != " << +output2[failed_ind] << std::endl;
+        std::cout << "Value for Nth Fibonacci, with n=" << +input[failed_ind] << std::endl;
+    }
+}
+
+int fibonacci_iterative(int n) {
+    if (n == 0) return 0;
+    std::pair<int, int> v = {0, 1};
+    for (int i = 1; i < n; ++i) {
+        v = {v.second, v.first + v.second};
+    }
+    return v.second;
+}
+
+// Uses a Union to better compact accessors
+union Matrix {
+    // Offers two ways of accessing the same data, either component-wise or array form
+    struct {
+        int a11, a12, a21, a22;
+    } c;
+    int arr[4];
+
+    // Operations required so Matrix is Regular (Default Constructible, Copyable and Equality Check)
+    Matrix() = default;
+
+    Matrix(int a11, int a12, int a21, int a22) {
+        c.a11 = a11;
+        c.a12 = a12;
+        c.a21 = a21;
+        c.a22 = a22;
+    }
+
+    Matrix(const int elem[4]) {
+        for (int i=0; i<4; i++)
+            arr[i] = elem[i];
+    }
+
+    Matrix(const Matrix& M) : Matrix(M.arr) {}
+
+    bool operator==(const Matrix& A) const {
+        for (int i=0; i<4; i++) {
+            if (arr[i] != A.arr[i]) return false;
+        }
+        return true;
+    }
+
+    // Operation required so that Matrix can be negated and therefore is a Monoid over Addition
+    friend Matrix operator*(int s, const Matrix& A) {
+        return Matrix(s * A.c.a11, s * A.c.a12, s * A.c.a21, s * A.c.a22);
+    }
+};
+
+namespace std {
+    // Makes the Matrix valid for Multiplicative Operations
+    template <>
+    struct multiplies<Matrix> {
+        Matrix operator()(const Matrix& A, const Matrix& B) const {
+            return Matrix(
+                A.c.a11 * B.c.a11 + A.c.a12 * B.c.a21,
+                A.c.a11 * B.c.a12 + A.c.a12 * B.c.a22,
+                A.c.a21 * B.c.a11 + A.c.a22 * B.c.a21,
+                A.c.a21 * B.c.a21 + A.c.a22 * B.c.a22
+            );
+        }
+    };    
+    // Makes the Matrix valid for Additive Operations
+    template <>
+    struct plus<Matrix> {
+        Matrix operator()(const Matrix& A, const Matrix& B) const {
+            return Matrix(
+                A.c.a11 + B.c.a11,
+                A.c.a12 + B.c.a12,
+                A.c.a21 + B.c.a21,
+                A.c.a22 + B.c.a22
+            );
+        }
+    };
+}
+
+// Identity Element for Additive Monoids
+template <>
+Matrix identity_element(std::plus<Matrix>) {
+    return Matrix({0,0,0,0});
+}
+
+// Identity Element for Multiplicative Monoids
+template <>
+Matrix identity_element(std::multiplies<Matrix>) {
+    return Matrix({1,0,0,1});
+}
+
+// Inverse Element for Additive Groups
+template <>
+Matrix inverse(const Matrix& A, std::plus<Matrix>) {
+    return -1 * A;
+}
+
+//TODO: Identity Element for Multiplicative Groups
+template <>
+Matrix inverse(const Matrix& A, std::multiplies<Matrix>) {
+    return A; // need to calculate inverse
+}
+
+//
+// Calculate Fibonacci using a convenient Matrix Representation for its calculation
+//            v(n) = exp(M, (n-1))*v(1) 
+//    where v(n) is a vector containing the nth value and its predecessor {fib(n), fib(n-1)}
+//     and M is a 2x2 square Matrix
+//
+int mat_fibonacci(int n) {
+    std::pair<int, int> v = {1, 0};
+    if (n > 0) {
+        Matrix M = power_group(Matrix({1,1,1,0}), n - 1, std::multiplies<Matrix>());
+        v.first = M.c.a11;
+    }
+
+    return v.first;
+}
+
 int main(int argc, char** argv) {
 
     std::cout << "Results for 64bit signed integer" << std::endl;
@@ -252,6 +414,12 @@ int main(int argc, char** argv) {
     std::cout << std::endl;
     std::cout << "Results for 32bit signed float with 32bit integer exponents" << std::endl;
     run_operation<float, int, std::multiplies<float>, int>(-15, 15, -10, 10, my_power<float, int>);
+
+    std::cout << std::endl;
+    std::cout << "Results for 32bit signed integer Fibonacci" << std::endl;
+    runFibs(10, 100, fibonacci_iterative, mat_fibonacci);
+
+
 
     return 0;
 }
