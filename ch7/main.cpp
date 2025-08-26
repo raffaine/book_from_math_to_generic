@@ -187,18 +187,15 @@ A power_group(A a, N n) {
     return power_monoid(a, n);
 }
 
-template <typename T, Integer N>
-void run_operation(T min_bound, T max_bound, N min_bound2, N max_bound2, std::function<T(N,T)> base_op, std::function<T(N,T)> custom_op) {
-    // Number of inputs to be considered
-    const int NUM = 1000000;
-
+template <typename T, Integer N, typename R = T>
+void run_operation(T min_bound, T max_bound, N min_bound2, N max_bound2, std::function<T(N,T)> base_op, std::function<T(N,T)> custom_op, const int NUM = 1000000) {
     // Seed with a real random value, if available
     std::random_device r;
  
     // Choose a random mean between min_bound and max_bound
     std::default_random_engine e(r());
-    std::uniform_int_distribution<T> u1dist(min_bound, max_bound);
-    std::uniform_int_distribution<T> u2dist(min_bound2, max_bound2);
+    std::uniform_int_distribution<R> u1dist(min_bound, max_bound);
+    std::uniform_int_distribution<N> u2dist(min_bound2, max_bound2);
 
     // Seed the input vectors with a fresh set of random numbers
     std::vector<T> input(NUM);
@@ -244,6 +241,19 @@ int8_t my_multiply(int a, int8_t b) {
     return static_cast<int8_t>(a) * b;
 }
 
+template <typename T, Integer N>
+T my_power(T a, N n) {
+    if (n < 0) {
+        a = inverse(a);
+        n = reciprocal(n);
+    }
+    T res = a;
+    while(--n > 0) {
+        res = std::multiplies<T>()(res, a);
+    }
+    return res;
+}
+
 
 int main(int argc, char** argv) {
 
@@ -255,10 +265,13 @@ int main(int argc, char** argv) {
     std::cout << std::endl;
     std::cout << "Results for 32bit unsigned integer" << std::endl;
     run_operation<uint32_t, uint32_t>(1000U, 10000U, 1000U, 10000U, std::multiplies<uint32_t>(), multiply_group<uint32_t, uint32_t>);
-
     std::cout << std::endl;
     std::cout << "Results for 8bit signed integer" << std::endl;
     run_operation<int8_t, int>(-10, 10, -10, 10, my_multiply, multiply_group<int, int8_t>);
+
+    std::cout << std::endl;
+    std::cout << "Results for 32bit signed float with 32bit integer exponents" << std::endl;
+    run_operation<float, int, int>(-15, 15, -10, 10, my_power<float, int>, power_group<float, int8_t>);
 
     return 0;
 }
