@@ -168,7 +168,7 @@ void run_operation(T min_bound, T max_bound, N min_bound2, N max_bound2, std::fu
     
     // Time N multiplications using the hardware implementation
     for (int i=0; i < NUM; i++) {
-        output[i] = base_op(input2[i], input[i]);
+        output[i] = base_op(input[i], input2[i]);
     }
     auto base_duration = t.clock();
     
