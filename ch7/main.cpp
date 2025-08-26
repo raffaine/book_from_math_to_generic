@@ -36,62 +36,8 @@ std::ostream& operator<<(std::ostream& os, microseconds t) {
 
 ////// Math functions
 
-// Concepts
-
-template <typename T>
-concept Additive = requires (T a, T b) {
-    a + b;
-};
-
-template <typename T>
-concept Multiplicative = requires (T a, T b) {
-    a * b;
-};
-
-template <typename T>
-concept NoncommutativeAdditiveSemigroup = std::regular<T> && Additive<T>;
-
-template <typename T>
-concept NoncommutativeMultiplicativeSemigroup = std::regular<T> && Multiplicative<T>;
-
 template <typename T>
 concept Integer = std::integral<T>;
-
-template <typename T>
-concept NoncommutativeAdditiveMonoid = NoncommutativeAdditiveSemigroup<T> && requires(T a) {
-    a + T(0) == a;
-    T(0) + a == a;
-};
-
-template <typename T>
-concept NoncommutativeMultiplicativeMonoid = NoncommutativeMultiplicativeSemigroup<T> && requires(T a) {
-    a * T(1) == a;
-    T(1) * a == a;
-};
-
-template <typename T>
-T reciprocal(T a) {
-    return -a;
-}
-
-template <typename T>
-concept NoncommutativeAdditiveGroup = NoncommutativeAdditiveMonoid<T> && requires(T a) {
-    a + reciprocal(a) == T(0);
-    reciprocal(a) + a == T(0);
-};
-
-template <typename T>
-T inverse(T a) {
-    return T(1) / a;
-}
-
-template <typename T>
-concept NoncommutativeMultiplicativeGroup = NoncommutativeMultiplicativeMonoid<T> && requires(T a) {
-    a * inverse(a) == T(1);
-    inverse(a) * a == T(1);
-};
-
-// Operations
 
 template <Integer T>
 bool odd(T n) {
@@ -103,92 +49,97 @@ T half(T n) {
     return n >> 1;
 }
 
-/*
-    Given r == 0, calculates n * a through sequential accumulation
-    i.e. result == a + a + a ... (repeated n times)
-    although uses an approach that does O(log(n)) operations (instead of n)
-*/
-template <NoncommutativeAdditiveSemigroup A, Integer N>
-A multiply_accumulate_semigroup(A r, N  n, A a) {
+template <typename T>
+concept Regular = std::regular<T>;
+
+template <typename Op, typename T>
+concept BinaryOperation = Regular<T> && std::invocable<Op, T, T>;
+
+template <typename Op, typename T>
+concept SemigroupOperation = BinaryOperation<Op, T> && requires (Op op, T a, T b, T c) {
+    op(a, op(b, c)) == op(op(a, b), b);
+};
+
+template <Regular A, Integer N, typename Op>
+requires SemigroupOperation<Op, A>
+A power_accumulate_semigroup(A r, A a, N n, Op op) {
     // A precondition for correctness is that n >= 0
     if (n == 0) return r;
     while(true) {
         if (odd(n)) {
-            r = r + a;
+            r = op(r, a);
             if (n == 1) return r;
         }
         n = half(n);
-        a = a + a;
+        a = op(a, a);
     }
 }
 
-template <NoncommutativeAdditiveSemigroup A, Integer N>
-A multiply_semigroup(N n, A a) {
-    // A precondition is that n > 0
+template <Regular A, Integer N, typename Op>
+requires SemigroupOperation<Op, A>
+A power_semigroup(A a, N n, Op op) {
+    // Precondition n > 0
     while (!odd(n)) {
-        a = a + a;
+        a = op(a, a);
         n = half(n);
     }
     if (n == 1) return a;
-    return multiply_accumulate_semigroup(a, half(n - 1), a + a);
+    return power_accumulate_semigroup(a, op(a, a), half(n - 1), op);
 }
 
-template <NoncommutativeAdditiveMonoid A, Integer N>
-A multiply_monoid(N n, A a) {
-    if (n == 0) return A(0);
-    return multiply_semigroup(n, a);
+template <typename T>
+T identity_element(std::plus<T>) {
+    return T(0);
+}
+template <typename T>
+T identity_element(std::multiplies<T>) {
+    return T(1);
 }
 
-template <NoncommutativeAdditiveGroup A, Integer N>
-A multiply_group(N n, A a) {
+template <typename Op, typename T>
+concept MonoidOperation = SemigroupOperation<Op, T> && requires (Op op, T a) {
+    op(a, identity_element(op)) == a;
+    op(identity_element(op), a) == a;
+};
+
+template <Regular A, Integer N, typename Op>
+requires MonoidOperation<Op, A>
+A power_monoid(A a, N n, Op op) {
+    // Precondition n > 0
+    if (n == 0) return identity_element(op);
+    return power_semigroup(a, n, op);
+}
+
+template <typename T>
+requires MonoidOperation<typename std::plus<T>, T>
+T inverse(const T& a, std::plus<T>) {
+    return -a;
+}
+
+template <typename T>
+requires MonoidOperation<typename std::multiplies<T>, T>
+T inverse(const T& x, std::multiplies<T>) {
+    return T(1) / x;
+}
+
+template <typename Op, typename T>
+concept GroupOperation = MonoidOperation<Op, T> && requires (Op op, T a) {
+    op(a, inverse(a, op)) == identity_element(op);
+    op(inverse(a, op), a) == identity_element(op);
+};
+
+template <Regular A, Integer N, typename Op>
+requires GroupOperation<Op, A>
+A power_group(A a, N n, Op op) {
     if (n < 0) {
         n = -n;
-        a = -a;
+        a = inverse(a, op);
     }
-    return multiply_monoid(n, a);
+    return power_monoid(a, n, op);
 }
 
-template <NoncommutativeMultiplicativeSemigroup A, Integer N>
-A power_accumulate_semigroup(A r, A a, N n) {
-    // A precondition for correctness is that n >= 0
-    if (n == 0) return r;
-    while(true) {
-        if (odd(n)) {
-            r = r * a;
-            if (n == 1) return r;
-        }
-        n = half(n);
-        a = a * a;
-    }
-}
-
-template <NoncommutativeMultiplicativeSemigroup A, Integer N>
-A power_semigroup(A a, N n) {
-    while (!odd(n)) {
-        a = a * a;
-        n = half(n);
-    }
-    if (n == 1) return a;
-    return power_accumulate_semigroup(a, a * a, half(n - 1));
-}
-
-template <NoncommutativeMultiplicativeMonoid A, Integer N>
-A power_monoid(A a, N n) {
-    if (n == 0) return A(0);
-    return power_semigroup(a, n);
-}
-
-template <NoncommutativeMultiplicativeGroup A, Integer N>
-A power_group(A a, N n) {
-    if (n < 0) {
-        n = -n;
-        a = inverse(a);
-    }
-    return power_monoid(a, n);
-}
-
-template <typename T, Integer N, typename R = T>
-void run_operation(T min_bound, T max_bound, N min_bound2, N max_bound2, std::function<T(N,T)> base_op, std::function<T(N,T)> custom_op, const int NUM = 1000000) {
+template <typename T, Integer N, typename Op, typename R = T>
+void run_operation(T min_bound, T max_bound, N min_bound2, N max_bound2, std::function<T(N,T)> base_op, const int NUM = 1000000) {
     // Seed with a real random value, if available
     std::random_device r;
  
@@ -211,7 +162,7 @@ void run_operation(T min_bound, T max_bound, N min_bound2, N max_bound2, std::fu
     // Time N operations using our custom approach
     Timer t;
     for (int i=0; i < NUM; i++) {
-        output2[i] = custom_op(input2[i], input[i]);
+        output2[i] = power_group(input[i], input2[i], Op());
     }
     auto custom_duration = t.clock();
     
@@ -244,8 +195,8 @@ int8_t my_multiply(int a, int8_t b) {
 template <typename T, Integer N>
 T my_power(T a, N n) {
     if (n < 0) {
-        a = inverse(a);
-        n = reciprocal(n);
+        a = inverse(a, std::multiplies<T>());
+        n = -n;
     }
     T res = a;
     while(--n > 0) {
@@ -254,24 +205,23 @@ T my_power(T a, N n) {
     return res;
 }
 
-
 int main(int argc, char** argv) {
 
     std::cout << "Results for 64bit signed integer" << std::endl;
-    run_operation<int64_t, int64_t>(-500000, 500000, -500000, 500000, std::multiplies<int64_t>(), multiply_group<int64_t, int64_t>);
+    run_operation<int64_t, int64_t, std::plus<int64_t>>(-500000, 500000, -500000, 500000, std::multiplies<int64_t>());
     std::cout << std::endl;
     std::cout << "Results for 32bit signed integer" << std::endl;
-    run_operation<int, int>(-5000, 5000, -5000, 5000, std::multiplies<int>(), multiply_group<int, int>);
+    run_operation<int, int, std::plus<int>>(-5000, 5000, -5000, 5000, std::multiplies<int>());
     std::cout << std::endl;
     std::cout << "Results for 32bit unsigned integer" << std::endl;
-    run_operation<uint32_t, uint32_t>(1000U, 10000U, 1000U, 10000U, std::multiplies<uint32_t>(), multiply_group<uint32_t, uint32_t>);
+    run_operation<uint32_t, uint32_t, std::plus<uint32_t>>(1000U, 10000U, 1000U, 10000U, std::multiplies<uint32_t>());
     std::cout << std::endl;
     std::cout << "Results for 8bit signed integer" << std::endl;
-    run_operation<int8_t, int>(-10, 10, -10, 10, my_multiply, multiply_group<int, int8_t>);
+    run_operation<int8_t, int, std::plus<int8_t>>(-10, 10, -10, 10, my_multiply);
 
     std::cout << std::endl;
     std::cout << "Results for 32bit signed float with 32bit integer exponents" << std::endl;
-    run_operation<float, int, int>(-15, 15, -10, 10, my_power<float, int>, power_group<float, int8_t>);
+    run_operation<float, int, std::multiplies<float>, int>(-15, 15, -10, 10, my_power<float, int>);
 
     return 0;
 }
