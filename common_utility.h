@@ -24,7 +24,7 @@ std::ostream& operator<<(std::ostream& os, std::chrono::microseconds t) {
 #if PRINT_TIME_AS_MS
     os << std::chrono::duration_cast<std::chrono::milliseconds>(t).count() << "ms";
 #else
-    os << t.count() << " microseconds";
+    os << t.count() << "\u00B5s";
 #endif
     return os;
 }
