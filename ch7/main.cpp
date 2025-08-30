@@ -59,6 +59,7 @@ int8_t my_multiply(int8_t a, int b) {
     return static_cast<int8_t>(b) * a;
 }
 
+// Linear Power Function
 template <typename T, Integer N>
 T my_power(T a, N n) {
     if (a == T(0)) return a;
@@ -123,6 +124,7 @@ void runFibs(T min_bound, T max_bound, Op base_op, Op custom_op, const int NUM=1
     }
 }
 
+// A Linearly approach to fibonacci calculation (naive recursive is O(2^n))
 int fibonacci_iterative(int n) {
     if (n == 0) return 0;
     std::pair<int, int> v = {0, 1};
@@ -132,13 +134,28 @@ int fibonacci_iterative(int n) {
     return v.second;
 }
 
+//
+// Calculate Fibonacci using a convenient Matrix2x2 Representation for its calculation
+//            v(n) = exp(M, (n-1))*v(1) 
+//    where v(n) is a vector containing the nth value and its predecessor {fib(n), fib(n-1)}
+//     and M is a 2x2 square Matrix2x2
+//
+//   Given the power function is O(log(n)), this is more efficient than above (depends on matrix multiplication though for small Ns)
+// 
+int mat_fibonacci(int n) {
+    std::pair<int, int> v = {1, 0};
+    if (n > 0) {
+        auto M = power(Matrix2x2({1,1,1,0}), n - 1);
+        v.first = M.c.a11;
+    }
+
+    return v.first;
+}
+
 int main(int argc, char** argv) {
 
     std::cout << "Results for 64bit signed integer" << std::endl;
     run_operation<int64_t, int64_t, std::plus<int64_t>>(-500000, 500000, -500000, 500000, std::multiplies<int64_t>());
-    std::cout << std::endl;
-    std::cout << "Results for 32bit signed integer" << std::endl;
-    run_operation<int, int, std::plus<int>>(-5000, 5000, -5000, 5000, std::multiplies<int>());
     std::cout << std::endl;
     std::cout << "Results for 32bit unsigned integer" << std::endl;
     run_operation<uint32_t, uint32_t, std::plus<uint32_t>>(1000U, 10000U, 1000U, 10000U, std::multiplies<uint32_t>());
@@ -149,12 +166,13 @@ int main(int argc, char** argv) {
     std::cout << std::endl;
     std::cout << "Results for 32bit signed float with 32bit integer exponents" << std::endl;
     run_operation<float, int, std::multiplies<float>, int>(-15, 15, -10, 10, my_power<float, int>);
+    std::cout << std::endl;
+    std::cout << "Results for 64bit signed double with 32bit integer exponents" << std::endl;
+    run_operation<double, int, std::multiplies<double>, int>(-15, 15, -20, 20, my_power<double, int>);
 
     std::cout << std::endl;
     std::cout << "Results for 32bit signed integer Fibonacci" << std::endl;
-    runFibs(10, 100, fibonacci_iterative, mat_fibonacci);
-
-
-
+    runFibs(50, 200, fibonacci_iterative, mat_fibonacci);
+    
     return 0;
 }

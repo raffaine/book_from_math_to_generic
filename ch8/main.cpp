@@ -39,6 +39,7 @@ void print(T mb, const char* message) {
     }
 }
 
+// Used to Represent Distances that can either be a positive integer or inifinite representing no connection
 template <typename T>
 struct Dist {
     Dist() = default;
@@ -88,8 +89,13 @@ struct Dist {
 };
 
 int main(int argc, char** argv) {
-    Polynomial({1,2,3,4,5}).evaluate(1);
+    // General Tests
+    cout << Polynomial({1,2,3,4,5}).evaluate(1) << endl;
+    cout << ((((complex(2.) + complex(0., 2.)) / complex(2., 0.)) == ((complex<double>(1.) - complex(0., 1.)) * complex(0., 1.))) ? "Equal" : "Different") << endl;
+    cout << gauss_integer(2)/gauss_integer(2) << endl;
+    cout << gcd(148, 36) << endl;
 
+    // Social Nets Exercise
     SqMatrix<bool, friends.size()> mb(true);
     setv(mb, {{"Ari", {"Bev", "Don"}}, {"Bev", {"Fay"}}, {"Cal", {"Don"}}, {"Don", {"Fay"}}, {"Eva", {"Gia"}}});
 
@@ -98,13 +104,8 @@ int main(int argc, char** argv) {
     auto mf = power(mb, friends.size()-1);
     print(mf, "All socially connected people to ");
 
+    // Shortest Distance Exercise
     SqMatrix<Dist<int>, places.size()> mp(0);
-    for (int i = 0; i < places.size(); i++) {
-        for (int j = 0; j < places.size(); j++) {
-            if (i == j) continue;
-            mp(i,j, Dist(0, true));
-        }
-    }
     mp(0, 1, 6);
     mp(0, 3, 3);
     mp(1, 4, 2);
@@ -120,31 +121,9 @@ int main(int argc, char** argv) {
 
     cout << mp << endl;
 
-    // cout << Dist(0, true) << " * " << Dist(0) << " = " << Dist(0, true) * Dist(0)  << endl;
-    // cout << Dist(0, true) << " * " << Dist(1) << " = " << Dist(0, true) * Dist(1)  << endl;
-    // cout << Dist(0, true) << " * " << Dist(0, true) << " = " << Dist(0, true) * Dist(0, true)  << endl;
-    // cout << Dist(0, true) << " + " << Dist(0, true) << " = " << Dist(0, true) + Dist(0, true)  << endl;
-    // cout << Dist(0, true) << " + " << Dist(0) << " = " << Dist(0, true) + Dist(0)  << endl;
-    // cout << Dist(0, true) << " + " << Dist(1) << " = " << (Dist<int>(0, true) * Dist(0)) + Dist(1)  << endl;
-    // cout << Dist(0) << " + " << Dist(0) << " = " << Dist(0) + Dist(0)  << endl;
-    // cout << Dist(0) << " + " << Dist(2) << " = " << Dist(0) + Dist(2)  << endl;
-
-    // SqMatrix<Dist<int>, places.size()> mpf;
-    // const auto N = places.size();
-    // for (int i = 0; i < N; i++) {
-    //     for (int j = 0; j < N; j++) {
-    //         for (int k = 0; k < N; k++) {
-    //             cout << mp(i,k) << " * " << mp(k,j) << " (" << (mp(i,k) * mp(k,j)) << ") + " ;
-    //             mpf(i, j, mpf(i, j) + (mp(i,k) * mp(k,j)));
-    //         }
-    //         cout << " = " << mpf(i, j) << endl;
-    //     }
-    // }
-    // cout << mp * mp;
     const auto n = places.size();
     auto mpf = power(mp, n-1);
     cout << mpf << endl;
-    cout << mpf * transpose(mp) << endl;
 
     return 0;
 }

@@ -20,6 +20,7 @@ T half(T n) {
     return n >> 1;
 }
 
+// Small Utility for comparison of Floats
 template <typename T>
 bool compare(const T& a, const T& b) {
     return a == b;
@@ -34,15 +35,27 @@ bool compare(const float& x, const float& y) {
     return diff <= eps;
 }
 
+template <>
+bool compare(const double& x, const double& y) {
+    const double eps = std::numeric_limits<double>::epsilon()*100; //nudges epsilon a little since powers are really high
+    if (y == 0.) return x == 0.;
+    auto diff = x / y;
+    diff = (diff < 1.) ? 1. - diff : diff - 1.;
+    return diff <= eps;
+}
+
+// Partial Specialization for a Requirement for Monoids T (e, an identity element over operations +, *)
 template <typename T>
 T identity_element(std::plus<T>) {
     return T(0);
 }
+
 template <typename T>
 T identity_element(std::multiplies<T>) {
     return T(1);
 }
 
+// Partial Specialization for Requirement for Groups T (a^-1, where a Op a^-1 == e specialized for Op in [+,*])
 template <typename T>
 T inverse(const T& a, std::plus<T>) {
     return -a;
@@ -57,39 +70,181 @@ T inverse(const T& x, std::multiplies<T>) {
 ////// Concepts
 ////////////////////
 
+// A Type T that has an Equality Comparison, a Default Constructor and Copy Constructor (or assignment)
 template <typename T>
 concept Regular = std::regular<T>;
 
+// An operation Op over two elements from type T, so that given a, b in T, Op(a,b) also produces a T (closed)
 template <typename Op, typename T>
-concept BinaryOperation = Regular<T> && std::invocable<Op, T, T>;
+concept BinaryOperation = Regular<T> && std::invocable<Op, T, T> && requires (Op op, T a, T b) {
+    { op(a, b) } -> std::same_as<T>;
+};
 
+// A BinaryOperation Op that is also associative over its elements
 template <typename Op, typename T>
-concept SemigroupOperation = BinaryOperation<Op, T> && requires (Op op, T a, T b, T c) {
+concept AssociativeOperation = BinaryOperation<Op, T> && requires (Op op, T a, T b, T c) {
     op(a, op(b, c)) == op(op(a, b), b);
 };
 
+// An Associative operation Op over elements in Semigroup T
+template <typename Op, typename T>
+concept SemigroupOperation = AssociativeOperation<Op, T>;
+
+// A SemigroupOperation Op over elements in Monoid T have an identity element e
 template <typename Op, typename T>
 concept MonoidOperation = SemigroupOperation<Op, T> && requires (Op op, T a) {
     op(a, identity_element(op)) == a;
     op(identity_element(op), a) == a;
 };
 
+// A MonoidOperation Op over elements in Group T have an inverse element a^-1
 template <typename Op, typename T>
 concept GroupOperation = MonoidOperation<Op, T> && requires (Op op, T a) {
     op(a, inverse(a, op)) == identity_element(op);
     op(inverse(a, op), a) == identity_element(op);
 };
 
+// A commuatative operation is that which doesn't depend on the order of the operand
+template <typename Op, typename T>
+concept Commutative = BinaryOperation<Op, T> && requires (Op op, T a, T b) {
+    op(a, b) == op(b, a);
+};
+
+// A GroupOperation Op over elements in Abelian Group T are commutative
+template <typename Op, typename T>
+concept AbelianGroupOperation = GroupOperation<Op, T> && Commutative<Op, T>;
+
+// Types T and U that admits an Addition Operation between elements T and U
+template <typename T, typename U = T>
+concept Additive = requires (T a, U b) {
+    a + b;
+    b + a;
+};
+
+// Types T and U that admits a Multiplication Operation between elements T and U
+template <typename T, typename U = T>
+concept Multiplicative = requires (T a, U b) {
+    a * b;
+    b * a;
+};
+
+// A Monoid T where the operation is Addition
 template <typename T>
-concept InputIterator = std::input_iterator<T>;
+concept AdditiveMonoid = MonoidOperation<std::plus<T>, T>;
+
+// A Monoid T where the operation is Multiplication
+template <typename T>
+concept MultiplicativeMonoid = MonoidOperation<std::multiplies<T>, T>;
+
+// A Group T where the operation is Addition
+template <typename T>
+concept AdditiveGroup = GroupOperation<std::plus<T>, T>;
+
+// A Group T where the operation is Multiplication
+template <typename T>
+concept MultiplicativeGroup = GroupOperation<std::multiplies<T>, T>;
+
+// Given an Additive type T that is Multiplicative with Type U, the Multiplication distributes over the Addition
+template <typename T, typename U = T>
+concept Distributive = Additive<T> && Multiplicative<T, U> && requires (U x, T y, T z) {
+    // Distributive Property
+    x * (y + z) == (x * y) + (x * z);
+    (y + z) * x == (y * x) + (z * x);
+};
+
+// Given T is a Monoid over Addition (commuative) and Multiplication, it's a SemiRing if they distribute over another
+template <typename T>
+concept Semiring =  Commutative<std::plus<T>, T> && Distributive<T> &&
+                    AdditiveMonoid<T> && MultiplicativeMonoid<T> && 
+requires (T x) {
+    // There are two different elements T(1) and T(0)
+    T(1) != T(0);
+    // T(0) works as the identity for the addition
+    x + T(0) == x;
+    T(0) + x == x;
+    // T(1) works as the identity for the multiplication
+    x * T(1) == x;
+    T(1) * x == x;
+    // T(0) when multiplied by any element results in T(0)
+    x * T(0) == T(0);
+    T(0) * x == T(0);
+};
+
+// A Semiring T where the elements can be inversed over addition (which means they form a group)
+template <typename T>
+concept Ring = Semiring<T> && AdditiveGroup<T>;
+
+// A Ring T with a Commutative Multiplication over its elements
+template <typename T>
+concept CommutativeRing = Ring<T> && Commutative<std::multiplies<T>, T>;
+
+// A Commutative Ring T with no zero divisors
+template <typename T>
+concept IntegralDomain = CommutativeRing<T> && requires (T a, T b) {
+    // i.e. there is no a, b in T that when multiplied result in 0, unless either a or b are zero
+    a != T(0) && b != T(0) && (a * b) != T(0);
+};
+
+template <Integer I>
+I quotient(I a, I b) {
+    return a / b;
+}
+
+template <Integer I>
+I remainder(I a, I b) {
+    return a % b;
+}
+
+using Natural = int;
+template <Integer I>
+Natural norm(I a) {
+    return std::abs(a);
+}
 
 template <typename T>
-concept Semiring = std::regular<T>;
+concept EuclidianDomain = IntegralDomain<T> && requires (T a, T b) {    
+    // Quotient q and Remainder r where for any integer a and non-zero b where a == q * b + r
+    b != T(0) && a == quotient(a, b) * b + remainder(a, b);
+    // Norm
+    a == T(0) && norm(a) == T(0);
+    a != T(0) && norm(a) != T(0);
+    // Norm of the product of non-zero elements is bigger or equal to the norm of the elements
+    b != T(0) && norm(a * b) >= norm(a);
+    // Norm of the remainder of a and b is less than norm of b
+    norm(remainder(a,b)) < norm(b);
+};
+
+// An Integral Domain T where every non-zero element is invertible
+template <typename T>
+concept Field = IntegralDomain<T> && requires (T a) {
+    a != T(0) && inverse(std::multiplies<T>(), a) * a == T(1);
+};
+
+// An Additive Group G and a Ring R where R distributes over elements of G
+template <typename G, typename R>
+concept Module = AdditiveGroup<G> && Ring<R> && Distributive<G, R>;
+
+// A Module on G and R where R is a Field
+template <typename G, typename R>
+concept VectorSpace = Module<G, R> && Field<R>;
 
 ////////////////////
 ////// Algorithms
 ////////////////////
 
+// Given that for an Euclidian Domain E,
+//    norm(remainder(a,b)) < norm(b)
+//  the function below is guaranteed to terminate (on each iteration b will have a smaller norm until it inevitably reaches zero)
+template <EuclidianDomain E>
+E gcd(E a, E b) {
+    while (b != E(0)) {
+        a = remainder(a, b);
+        std::swap(a, b);
+    }
+    return a;
+}
+
+// Technically the type A doesn't require equality or default constructible, maybe Semiregular?
 template <Regular A, Integer N, typename Op>
 requires SemigroupOperation<Op, A>
 A power_accumulate_semigroup(A r, A a, N n, Op op) {
@@ -120,7 +275,7 @@ A power_semigroup(A a, N n, Op op) {
 template <Regular A, Integer N, typename Op>
 requires MonoidOperation<Op, A>
 A power_monoid(A a, N n, Op op) {
-    // Precondition n > 0
+    // Precondition n >= 0
     if (n == 0) return identity_element(op);
     return power_semigroup(a, n, op);
 }
@@ -135,6 +290,7 @@ A power_group(A a, N n, Op op) {
     return power_monoid(a, n, op);
 }
 
+// Partial specialization that applies the power_group over the Multiplication Operation (*) over A
 template <Regular A, Integer N>
 A power(A a, N n) {
     return power_group(a, n, std::multiplies<A>());
@@ -144,7 +300,7 @@ A power(A a, N n) {
 ///  New Types
 /////////////////////////
 
-// 2x2 Matrices (Uses a Union to better compact accessors)
+// 2x2 Matrices (Uses a Union to better compact accessors and faster operations with unrolled loops)
 union Matrix2x2 {
     // Offers two ways of accessing the same data, either component-wise or array form
     struct {
@@ -252,9 +408,15 @@ private:
     std::vector<T> coeficients;
 };
 
+
+// A Helper to allow specialization of the Divide function (for the integer case)
+template <Number T>
+struct divide_impl;
+
 // Complex Numbers
 template <Number T>
 class complex {
+    friend struct divide_impl<T>;
 public:
     complex() = default;
     complex(T a,  T b = T(0)) : a(a), b(b) {}
@@ -266,22 +428,68 @@ public:
 
     complex<T> conjugate() const { return complex(a, -b); }
     friend complex<T> operator~(const complex<T>& z) { return z.conjugate(); }
+    
+    friend complex<T> operator+(const complex<T>& z) { return z; }
+    friend complex<T> operator-(const complex<T>& z) { return complex<T>(-z.a, -z.b); }
+
+    friend complex<T> operator-(const complex<T>& x, const complex<T>& y) {
+        return x + (-y);
+    }
+
+    friend complex<T> operator+(const complex<T>& x, const complex<T>& y) {
+        return complex<T>(x.a + y.a, x.b + y.b);
+    }
+
+    friend complex<T> operator*(const complex<T>& x, const complex<T>& y) {
+        return complex<T>(x.a * y.a - x.b * y.b, x.a * y.b + x.b * y.a);
+    }
+
+    friend complex<T> operator/(const complex<T>& x, const complex<T>& y) {
+        return divide_impl<T>::divide(x, y);
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const complex<T>& z) {
+        os << +z.a << " + " << +z.b << "i";
+        return os;
+    }
 
 private:
     T a, b;
 };
 
-// Gauss Integers are Complex numbers with integer coeficients
-template <Integer T>
-using gauss_integer = complex<T>;
+// Avoid dividing Twice if Type is floating point (so that a/b == a * (1/b))
+template <Number T>
+struct divide_impl {
+    static complex<T> divide(const complex<T>& x, const complex<T>& y) {
+        const T d( T(1) / (y.a * y.a + y.b * y.b));
+        return complex<T>(d * (x.a * y.a + x.b * y.b), d * (x.b * y.a + x.a * y.b));
+    }
+};
 
+// Gauss Integers are Complex numbers with integer coeficients
+template <Integer I>
+using gauss_integer = complex<I>;
+
+// TODO: Not sure this is how quotient is calculated for Gauss Integers
+// At least performs an integer division (the above optimization doesn't apply since 1/b == 0 for integers)
+template <Integer I>
+struct divide_impl<I> {
+    static complex<I> divide(const complex<I>& x, const complex<I>& y) {
+        const I d(y.a * y.a + y.b * y.b);
+        return complex<I>((x.a * y.a + x.b * y.b) / d, (x.b * y.a + x.a * y.b) / d);
+    }
+};
+
+// TODO: Not really sure how to analitically calculate this
+template <Integer I>
+complex<I> remainder(const complex<I>& a, const complex<I>& b) {
+    return complex<I>(1);
+}
+    
 
 // N dimensional Square Matrices
 template <typename T, int N>
-requires Regular<T> && requires (T a, T b) {
-    a * b;
-    a + b;
-}
+requires Regular<T> && Additive<T> && Multiplicative<T>
 class SqMatrix {
 public:
     SqMatrix() {
@@ -378,21 +586,3 @@ public:
 private:
     std::array<T, N * N> a;
 };
-
-
-
-//
-// Calculate Fibonacci using a convenient Matrix2x2 Representation for its calculation
-//            v(n) = exp(M, (n-1))*v(1) 
-//    where v(n) is a vector containing the nth value and its predecessor {fib(n), fib(n-1)}
-//     and M is a 2x2 square Matrix2x2
-//
-int mat_fibonacci(int n) {
-    std::pair<int, int> v = {1, 0};
-    if (n > 0) {
-        auto M = power(Matrix2x2({1,1,1,0}), n - 1);
-        v.first = M.c.a11;
-    }
-
-    return v.first;
-}
