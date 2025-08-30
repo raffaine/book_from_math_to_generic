@@ -26,18 +26,9 @@ bool compare(const T& a, const T& b) {
     return a == b;
 }
 
-template <>
-bool compare(const float& x, const float& y) {
-    const float eps = std::numeric_limits<float>::epsilon()*100; //nudges epsilon a little since powers are really high
-    if (y == 0.) return x == 0.;
-    auto diff = x / y;
-    diff = (diff < 1.) ? 1. - diff : diff - 1.;
-    return diff <= eps;
-}
-
-template <>
-bool compare(const double& x, const double& y) {
-    const double eps = std::numeric_limits<double>::epsilon()*100; //nudges epsilon a little since powers are really high
+template <std::floating_point T>
+bool compare(const T& x, const T& y) {
+    const T eps = std::numeric_limits<T>::epsilon()*100; //nudges epsilon a little since powers are really high
     if (y == 0.) return x == 0.;
     auto diff = x / y;
     diff = (diff < 1.) ? 1. - diff : diff - 1.;
