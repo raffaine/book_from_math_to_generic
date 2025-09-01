@@ -44,10 +44,12 @@ void print(T mb, const char* message) {
 template <typename T>
 requires AdditiveGroup<T> && MultiplicativeGroup<T>
 struct Dist {
-    Dist(bool infinite, T value) : v((infinite) ? T(0) : value), inf(infinite) {}
+    Dist(bool infinite, T value) : v((infinite) ? T(0) : value), inf(infinite) {
+        if (!infinite) path.push_back(value);
+    }
     Dist() : Dist(true, T(0)) {}
     Dist(T value) : Dist(false, value) {}
-    Dist(const Dist<T>& o) : inf(o.inf), v(o.v) {}
+    Dist(const Dist<T>& o) : inf(o.inf), v(o.v), path(o.path) {}
 
     friend bool operator==(const Dist& d1,const Dist& d2) {
         return (d1.inf && d2.inf) || (d1.v == d2.v);
@@ -65,8 +67,29 @@ struct Dist {
         return Dist(x.v == 0, (x.inf)? 0 : inverse(x.v));
     }
     
+    const Dist<T>& operator*=(const Dist<T>& b) {
+        inf = inf || b.inf;
+        if(inf) {
+            v = 0;
+            path.clear();
+        } else if(b.v != 0) {
+            if (v == 0) {
+                path = b.path;
+            }else if (b.path.size() > 1) {
+                path.insert(end(path), begin(b.path), end(b.path));
+            } else {
+                path.push_back(b.v);
+            }
+            v += b.v;
+        }
+
+        return *this;
+    }    
+
     friend Dist<T> operator*(const Dist<T>& a, const Dist<T>& b) {
-        return Dist(a.inf || b.inf, a.v + b.v);
+        Dist<T> c(a);
+        c *= b;
+        return c;
     }
 
     friend Dist<T> operator+(const Dist<T>& a, const Dist<T>& b) {
@@ -76,12 +99,11 @@ struct Dist {
     }
 
     const Dist<T>& operator+=(const Dist<T>& b) {
-        if (inf) {
-            inf = inf && b.inf;
-            v = inf?  0 : b.v;
-        } else if (!b.inf) {
-            v = min(v, b.v);
+        if (!b.inf && (inf || v > b.v)) {
+            v = b.v;
+            path = b.path;
         }
+        inf = inf && b.inf;
 
         return *this;
     }
@@ -92,11 +114,16 @@ struct Dist {
     friend ostream& operator<<(ostream& os, Dist<T> d) {
         if (d.inf) os << "  \u221E";
         else os << setw(3) << +d.v;
+
         return os;
     }
 
+    // Is this distance currently infinite
     bool inf = true;
+    // If not, what is the distance
     T v = 0;
+    // Stores the distances taken so far
+    vector<T> path;
 };
 
 int main(int argc, char** argv) {
@@ -155,29 +182,20 @@ int main(int argc, char** argv) {
         }
         cout << "Shortest distance between: " << v1 << " and " << v2 << " is ";
         cout << shortest << endl << endl;
-        
-        // Search the resulting matrix for the element with minimum value for a given column (the best way to that node)
-        // starting with destination and stopping once we found the initial node (use a stack to reverse it later)
-        stack<int> path;
-        path.push(p2-begin(places));
-        while(path.top() != (p1 - begin(places))) {
-            int pos = 0;
-            for(int i=0; i < places.size(); i++) {
-                auto cur = mpf(i, path.top());
-                if (i != path.top() && cur < shortest) {
-                    shortest = cur;
-                    pos = i;
-                }
-            }
-            
-            path.push(pos);
-        }
 
         cout << "It takes the following path" << endl;
-        // Print path on the reverse order
-        while(!path.empty()) {
-            cout << places[path.top()] << " ";
-            path.pop();
+        int i = p1 - begin(places);
+        cout << places[i] << " ";
+        for (auto cost : shortest.path) {
+            // find the value in the matrix that matches the cost
+            for(int j = 0; j < places.size(); j++) {
+                if (mp(i,j) == Dist(cost)) {
+                    cout << places[j] << " ";
+                    // Adjust the row to match the new place
+                    i = j;
+                    break;
+                }
+            }
         }
         cout << endl;
 
